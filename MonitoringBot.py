@@ -4,37 +4,16 @@ import re
 from datetime import datetime
 import os
 import logging
-from logging.handlers import RotatingFileHandler
 import sys
+import json
 
 # ログ設定
-def setup_logger():
-    logger = logging.getLogger('discord_bot')
-    logger.setLevel(logging.INFO)
-    
-    # ファイルハンドラー（ログローテーション付き）
-    file_handler = RotatingFileHandler(
-        'discord_bot.log',
-        maxBytes=5*1024*1024,  # 5MB
-        backupCount=5,
-        encoding='utf-8'
-    )
-    file_handler.setFormatter(logging.Formatter(
-        '%(asctime)s:%(levelname)s:%(name)s: %(message)s'
-    ))
-    
-    # コンソールハンドラー
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(logging.Formatter(
-        '%(asctime)s:%(levelname)s: %(message)s'
-    ))
-    
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
-    
-    return logger
-
-logger = setup_logger()
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s:%(levelname)s:%(name)s: %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger('discord_bot')
 
 class ArchiveBot(discord.Client):
     def __init__(self):
@@ -43,68 +22,51 @@ class ArchiveBot(discord.Client):
         super().__init__(intents=intents)
         
         self.tree = app_commands.CommandTree(self)
-        self.archive_channel_id = None  # 起動時にNullに設定
-        self.logger = logger
+        self.guild_settings = {}
+        self.load_settings()
+
+    def load_settings(self):
+        """設定をJSONファイルから読み込む"""
+        try:
+            if os.path.exists('guild_settings.json'):
+                with open('guild_settings.json', 'r') as f:
+                    self.guild_settings = json.load(f)
+                    # 文字列のキーを整数に変換
+                    self.guild_settings = {int(k): v for k, v in self.guild_settings.items()}
+        except Exception as e:
+            logger.error(f"Error loading settings: {e}")
+
+    def save_settings(self):
+        """設定をJSONファイルに保存"""
+        try:
+            with open('guild_settings.json', 'w') as f:
+                json.dump(self.guild_settings, f)
+        except Exception as e:
+            logger.error(f"Error saving settings: {e}")
 
     async def setup_hook(self):
         try:
-            self.logger.info("Setting up commands...")
+            logger.info("Setting up commands...")
             await self.tree.sync()
-            self.logger.info("Commands setup complete!")
+            logger.info("Commands setup complete!")
         except Exception as e:
-            self.logger.error(f"Error in setup_hook: {e}", exc_info=True)
+            logger.error(f"Error in setup_hook: {e}", exc_info=True)
 
 client = ArchiveBot()
 
 # URLを検出する正規表現パターン
 URL_PATTERN = r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
 
-# メッセージが送信されたときのイベントハンドラ
 @client.event
 async def on_ready():
     try:
-        client.logger.info(f'Bot {client.user} is ready')
-        client.logger.info('Monitoring messages for URLs and files...')
-        
-        # 環境変数からチャンネルIDを読み込む
-        channel_id = os.getenv('ARCHIVE_CHANNEL_ID')
-        if channel_id:
-            client.archive_channel_id = int(channel_id)
-            client.logger.info(f'Loaded archive channel ID: {channel_id}')
-        
-        # コマンドを同期
+        logger.info(f'Bot {client.user} is ready')
+        logger.info('Monitoring messages for URLs and files...')
         await client.tree.sync()
-        client.logger.info("Commands synced successfully!")
-        
-        # Botのステータスを設定
         await client.change_presence(activity=discord.Game(name="/help でコマンド一覧"))
     except Exception as e:
-        client.logger.error(f"Error in on_ready: {e}", exc_info=True)
+        logger.error(f"Error in on_ready: {e}", exc_info=True)
 
-# クライアントのインスタンス化
-client = ArchiveBot()
-
-# URLを検出する正規表現パターン
-URL_PATTERN = r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
-
-# メッセージが送信されたときのイベントハンドラ
-@client.event
-async def on_ready():
-    print(f'{client.user} has connected to Discord!')
-    print('Monitoring messages for URLs and files...')
-    
-    # コマンドを同期
-    try:
-        print("Syncing commands...")
-        await client.tree.sync()
-        print("Commands synced successfully!")
-    except Exception as e:
-        print(f"Error syncing commands: {e}")
-    
-    # Botのステータスを設定
-    await client.change_presence(activity=discord.Game(name="/help でコマンド一覧"))
-
-# ヘルプコマンド
 @client.tree.command(name="help", description="利用可能なコマンドの一覧を表示します")
 async def help_command(interaction: discord.Interaction):
     try:
@@ -121,33 +83,34 @@ async def help_command(interaction: discord.Interaction):
         )
         embed.add_field(
             name="/status",
-            value="Botの現在の状態を表示します",
+            value="このサーバーでのBotの状態を表示します",
             inline=False
         )
         embed.add_field(
             name="/set_archive_channel",
-            value="アーカイブチャンネルを設定します",
+            value="このサーバーのアーカイブチャンネルを設定します",
             inline=False
         )
         embed.add_field(
             name="/show_archive_channel",
-            value="現在のアーカイブチャンネルを表示します",
+            value="このサーバーの現在のアーカイブチャンネルを表示します",
             inline=False
         )
         
         await interaction.response.send_message(embed=embed)
     except Exception as e:
-        print(f"Error in help command: {e}")
+        logger.error(f"Error in help command: {e}", exc_info=True)
         await interaction.response.send_message("コマンドの実行中にエラーが発生しました。", ephemeral=True)
 
-# Botのステータスを表示するコマンド
-@client.tree.command(name="status", description="Botの状態を表示します")
+@client.tree.command(name="status", description="このサーバーでのBotの状態を表示します")
 async def status_command(interaction: discord.Interaction):
     try:
-        archive_channel = client.get_channel(client.archive_channel_id)
+        guild_id = interaction.guild_id
+        channel_id = client.guild_settings.get(guild_id, {}).get('archive_channel_id')
+        archive_channel = client.get_channel(channel_id) if channel_id else None
         
         embed = discord.Embed(
-            title="Bot Status",
+            title=f"Bot Status - {interaction.guild.name}",
             color=discord.Color.green()
         )
         
@@ -163,24 +126,29 @@ async def status_command(interaction: discord.Interaction):
         )
         embed.add_field(
             name="監視状態",
-            value="アクティブ",
+            value="アクティブ" if channel_id else "アーカイブ先未設定",
             inline=True
         )
         
         await interaction.response.send_message(embed=embed)
     except Exception as e:
-        print(f"Error in status command: {e}")
+        logger.error(f"Error in status command: {e}", exc_info=True)
         await interaction.response.send_message("ステータスの取得中にエラーが発生しました。", ephemeral=True)
 
-# アーカイブチャンネルを設定するコマンド
-@client.tree.command(name="set_archive_channel", description="アーカイブチャンネルを設定します")
+@client.tree.command(name="set_archive_channel", description="このサーバーのアーカイブチャンネルを設定します")
 async def set_archive_channel(interaction: discord.Interaction, channel: discord.TextChannel):
     try:
-        client.archive_channel_id = channel.id
+        # サーバーIDとチャンネルIDを保存
+        guild_id = interaction.guild_id
+        if guild_id not in client.guild_settings:
+            client.guild_settings[guild_id] = {}
+        
+        client.guild_settings[guild_id]['archive_channel_id'] = channel.id
+        client.save_settings()
         
         embed = discord.Embed(
             title="アーカイブチャンネルを設定しました",
-            description=f"アーカイブチャンネルを #{channel.name} に設定しました",
+            description=f"このサーバーのアーカイブチャンネルを #{channel.name} に設定しました",
             color=discord.Color.green()
         )
         
@@ -192,25 +160,29 @@ async def set_archive_channel(interaction: discord.Interaction, channel: discord
         
         await interaction.response.send_message(embed=embed)
     except Exception as e:
-        print(f"Error in set_archive_channel command: {e}")
+        logger.error(f"Error in set_archive_channel command: {e}", exc_info=True)
         await interaction.response.send_message("チャンネルの設定中にエラーが発生しました。", ephemeral=True)
 
-# 現在のアーカイブチャンネルを表示するコマンド
-@client.tree.command(name="show_archive_channel", description="現在のアーカイブチャンネルを表示します")
+@client.tree.command(name="show_archive_channel", description="このサーバーの現在のアーカイブチャンネルを表示します")
 async def show_archive_channel(interaction: discord.Interaction):
     try:
-        archive_channel = client.get_channel(client.archive_channel_id)
-        if archive_channel:
-            await interaction.response.send_message(
-                f"現在のアーカイブチャンネル: #{archive_channel.name} (ID: {client.archive_channel_id})"
-            )
+        guild_id = interaction.guild_id
+        channel_id = client.guild_settings.get(guild_id, {}).get('archive_channel_id')
+        
+        if channel_id:
+            archive_channel = client.get_channel(channel_id)
+            if archive_channel:
+                await interaction.response.send_message(
+                    f"このサーバーのアーカイブチャンネル: #{archive_channel.name} (ID: {channel_id})"
+                )
+            else:
+                await interaction.response.send_message("設定されているチャンネルが見つかりません。")
         else:
             await interaction.response.send_message("アーカイブチャンネルが設定されていません。/set_archive_channel で設定してください。")
     except Exception as e:
-        print(f"Error in show_archive_channel command: {e}")
+        logger.error(f"Error in show_archive_channel command: {e}", exc_info=True)
         await interaction.response.send_message("チャンネル情報の取得中にエラーが発生しました。", ephemeral=True)
 
-# メッセージをアーカイブするイベントハンドラ
 @client.event
 async def on_message(message):
     try:
@@ -218,13 +190,25 @@ async def on_message(message):
         if message.author == client.user:
             return
 
-        # アーカイブチャンネルのメッセージは無視
-        if message.channel.id == client.archive_channel_id:
+        # DMは無視
+        if not message.guild:
             return
 
-        archive_channel = client.get_channel(client.archive_channel_id)
+        # サーバーのアーカイブ設定を取得
+        guild_id = message.guild.id
+        channel_id = client.guild_settings.get(guild_id, {}).get('archive_channel_id')
+        
+        # アーカイブ設定がなければ無視
+        if not channel_id:
+            return
+
+        # アーカイブチャンネルのメッセージは無視
+        if message.channel.id == channel_id:
+            return
+
+        archive_channel = client.get_channel(channel_id)
         if not archive_channel:
-            print(f'Error: Archive channel {client.archive_channel_id} not found')
+            logger.error(f'Archive channel {channel_id} not found for guild {guild_id}')
             return
 
         # メッセージからURLを検出
@@ -280,14 +264,13 @@ async def on_message(message):
                     try:
                         await archive_channel.send(file=await file.to_file())
                     except Exception as e:
-                        print(f'Error sending file {file.filename}: {e}')
+                        logger.error(f"Error sending file {file.filename}: {e}")
     except Exception as e:
-        print(f"Error in message handling: {e}")
+        logger.error(f"Error in message handling: {e}", exc_info=True)
 
-# エラーハンドリング
 @client.event
 async def on_error(event, *args, **kwargs):
-    client.logger.error(f"Error in {event}", exc_info=True)
+    logger.error(f"Error in {event}", exc_info=True)
 
 if __name__ == "__main__":
     try:
@@ -295,8 +278,8 @@ if __name__ == "__main__":
         if not token:
             raise ValueError("DISCORD_BOT_TOKEN environment variable is not set")
         
-        client.logger.info("Starting bot...")
+        logger.info("Starting bot...")
         client.run(token)
     except Exception as e:
-        client.logger.critical(f"Failed to start bot: {e}", exc_info=True)
+        logger.critical(f"Failed to start bot: {e}", exc_info=True)
         sys.exit(1)
