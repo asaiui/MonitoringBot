@@ -5,7 +5,7 @@ https://discord.com/oauth2/authorize?client_id=1338357316713582634
 
 ##【使い方】
 
-##Bot コマンド一覧
+## Bot コマンド一覧
 
 使用可能なコマンドの説明です
 /help
