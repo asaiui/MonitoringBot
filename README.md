@@ -17,5 +17,5 @@ https://discord.com/oauth2/authorize?client_id=1338357316713582634
 /show_archive_channel
 このサーバーの現在のアーカイブチャンネルを表示します
 
-①/status コマンドでBotが生きているか確認。
-②/set_archive_channelでどこにリンクとファイルを集めたいかを指定する。
+### 1 /status コマンドでBotが生きているか確認。
+### 2 /set_archive_channelでどこにリンクとファイルを集めたいかを指定する。
