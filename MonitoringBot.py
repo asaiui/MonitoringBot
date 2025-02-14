@@ -6,6 +6,8 @@ import os
 import logging
 import sys
 import json
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
 
 # ログ設定
 logging.basicConfig(
@@ -14,6 +16,17 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 logger = logging.getLogger('discord_bot')
+
+# シンプルなHTTPハンドラー
+class SimpleHTTPHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/html')
+        self.end_headers()
+        self.wfile.write(b"Bot is running")
+
+    def log_message(self, format, *args):
+        logger.info(format%args)
 
 class ArchiveBot(discord.Client):
     def __init__(self):
@@ -274,6 +287,15 @@ async def on_error(event, *args, **kwargs):
 
 if __name__ == "__main__":
     try:
+        # HTTPサーバーの設定
+        port = int(os.getenv('PORT', 10000))
+        http_server = HTTPServer(('0.0.0.0', port), SimpleHTTPHandler)
+        server_thread = threading.Thread(target=http_server.serve_forever)
+        server_thread.daemon = True
+        server_thread.start()
+        logger.info(f"Started HTTP server on port {port}")
+
+        # Botの起動
         token = os.getenv('DISCORD_BOT_TOKEN')
         if not token:
             raise ValueError("DISCORD_BOT_TOKEN environment variable is not set")
@@ -281,5 +303,5 @@ if __name__ == "__main__":
         logger.info("Starting bot...")
         client.run(token)
     except Exception as e:
-        logger.critical(f"Failed to start bot: {e}", exc_info=True)
+        logger.critical(f"Failed to start: {e}", exc_info=True)
         sys.exit(1)
