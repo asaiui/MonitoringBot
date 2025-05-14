@@ -57,11 +57,9 @@ class ArchiveBot(discord.Client):
         except Exception as e:
             logger.error(f"Error saving settings: {e}")
 
-    # ArchiveBotクラスのsetup_hookメソッドを修正
     async def setup_hook(self):
         try:
             logger.info("Setting up commands...")
-            # すべてのサーバーでコマンドを同期
             await self.tree.sync()
             logger.info("Commands setup complete!")
         except Exception as e:
@@ -76,27 +74,24 @@ URL_PATTERN = r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-
 TENOR_URL_PATTERN = r'https?://tenor\.com/view[^\s]*'
 
 # プライベートチャンネルかどうかを判断する関数
-@client.tree.command(name="privacy_settings", description="プライベートチャンネルの処理方法を設定します")
-async def privacy_settings(interaction: discord.Interaction, archive_private: bool = False):
+def is_private_channel(channel):
+    """
+    チャンネルがプライベートかどうかを判断する
+    @everyone に VIEW_CHANNEL 権限がない場合、プライベートチャンネルと見なす
+    """
     try:
-        guild_id = interaction.guild_id
-        if guild_id not in client.guild_settings:
-            client.guild_settings[guild_id] = {}
+        # @everyone のロールを取得
+        everyone_role = channel.guild.default_role
         
-        client.guild_settings[guild_id]['archive_private'] = archive_private
-        client.save_settings()
+        # チャンネルの権限を確認
+        permissions = channel.permissions_for(everyone_role)
         
-        logger.info(f"Privacy settings updated for guild {guild_id}: archive_private = {archive_private}")
-        
-        if archive_private:
-            message = "プライベートチャンネルのコンテンツもアーカイブするように設定しました。"
-        else:
-            message = "プライベートチャンネルのコンテンツはアーカイブしないように設定しました。"
-            
-        await interaction.response.send_message(message)
+        # VIEW_CHANNEL 権限がなければプライベート
+        return not permissions.view_channel
     except Exception as e:
-        logger.error(f"Error in privacy_settings command: {e}", exc_info=True)
-        await interaction.response.send_message("設定の更新中にエラーが発生しました。", ephemeral=True)
+        logger.error(f"Error checking channel privacy: {e}", exc_info=True)
+        # エラーの場合は安全のため、プライベートと見なす
+        return True
 
 @client.event
 async def on_ready():
@@ -138,7 +133,7 @@ async def help_command(interaction: discord.Interaction):
             inline=False
         )
         embed.add_field(
-            name="/privacy_settings",
+            name="/set_privacy",
             value="プライベートチャンネルの処理方法を設定します",
             inline=False
         )
@@ -236,8 +231,12 @@ async def show_archive_channel(interaction: discord.Interaction):
         logger.error(f"Error in show_archive_channel command: {e}", exc_info=True)
         await interaction.response.send_message("チャンネル情報の取得中にエラーが発生しました。", ephemeral=True)
 
-@client.tree.command(name="privacy_settings", description="プライベートチャンネルの処理方法を設定します")
-async def privacy_settings(interaction: discord.Interaction, archive_private: bool):
+# コマンド名を変更: privacy_settings -> set_privacy
+@client.tree.command(name="set_privacy", description="プライベートチャンネルの処理方法を設定します")
+@app_commands.describe(
+    archive_private="True: プライベートチャンネルもアーカイブする, False: プライベートチャンネルをアーカイブしない（デフォルト）"
+)
+async def set_privacy(interaction: discord.Interaction, archive_private: bool = False):
     try:
         guild_id = interaction.guild_id
         if guild_id not in client.guild_settings:
@@ -246,6 +245,8 @@ async def privacy_settings(interaction: discord.Interaction, archive_private: bo
         client.guild_settings[guild_id]['archive_private'] = archive_private
         client.save_settings()
         
+        logger.info(f"Privacy settings updated for guild {guild_id}: archive_private = {archive_private}")
+        
         if archive_private:
             message = "プライベートチャンネルのコンテンツもアーカイブするように設定しました。"
         else:
@@ -253,7 +254,7 @@ async def privacy_settings(interaction: discord.Interaction, archive_private: bo
             
         await interaction.response.send_message(message)
     except Exception as e:
-        logger.error(f"Error in privacy_settings command: {e}", exc_info=True)
+        logger.error(f"Error in set_privacy command: {e}", exc_info=True)
         await interaction.response.send_message("設定の更新中にエラーが発生しました。", ephemeral=True)
 
 @client.tree.command(name="sync_commands", description="コマンドを再同期します（管理者のみ）")
