@@ -70,6 +70,29 @@ client = ArchiveBot()
 # URLを検出する正規表現パターン
 URL_PATTERN = r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
 
+# Tenor GIF URLを検出するパターン
+TENOR_URL_PATTERN = r'https?://tenor\.com/view[^\s]*'
+
+# プライベートチャンネルかどうかを判断する関数
+def is_private_channel(channel):
+    """
+    チャンネルがプライベートかどうかを判断する
+    @everyone に VIEW_CHANNEL 権限がない場合、プライベートチャンネルと見なす
+    """
+    try:
+        # @everyone のロールを取得
+        everyone_role = channel.guild.default_role
+        
+        # チャンネルの権限を確認
+        permissions = channel.permissions_for(everyone_role)
+        
+        # VIEW_CHANNEL 権限がなければプライベート
+        return not permissions.view_channel
+    except Exception as e:
+        logger.error(f"Error checking channel privacy: {e}", exc_info=True)
+        # エラーの場合は安全のため、プライベートと見なす
+        return True
+
 @client.event
 async def on_ready():
     try:
@@ -109,6 +132,11 @@ async def help_command(interaction: discord.Interaction):
             value="このサーバーの現在のアーカイブチャンネルを表示します",
             inline=False
         )
+        embed.add_field(
+            name="/privacy_settings",
+            value="プライベートチャンネルの処理方法を設定します",
+            inline=False
+        )
         
         await interaction.response.send_message(embed=embed)
     except Exception as e:
@@ -119,7 +147,9 @@ async def help_command(interaction: discord.Interaction):
 async def status_command(interaction: discord.Interaction):
     try:
         guild_id = interaction.guild_id
-        channel_id = client.guild_settings.get(guild_id, {}).get('archive_channel_id')
+        guild_settings = client.guild_settings.get(guild_id, {})
+        channel_id = guild_settings.get('archive_channel_id')
+        archive_private = guild_settings.get('archive_private', False)
         archive_channel = client.get_channel(channel_id) if channel_id else None
         
         embed = discord.Embed(
@@ -140,6 +170,11 @@ async def status_command(interaction: discord.Interaction):
         embed.add_field(
             name="監視状態",
             value="アクティブ" if channel_id else "アーカイブ先未設定",
+            inline=True
+        )
+        embed.add_field(
+            name="プライベートチャンネル",
+            value="アーカイブする" if archive_private else "アーカイブしない",
             inline=True
         )
         
@@ -196,17 +231,25 @@ async def show_archive_channel(interaction: discord.Interaction):
         logger.error(f"Error in show_archive_channel command: {e}", exc_info=True)
         await interaction.response.send_message("チャンネル情報の取得中にエラーが発生しました。", ephemeral=True)
 
-# Git関連URLを検出する正規表現パターンを追加
-GIT_URL_PATTERN = r'http[s]?://(?:github\.com|gitlab\.com|bitbucket\.org|git\.io)(?:/[^\s]*)?'
-
-# URLを検出する正規表現パターン
-URL_PATTERN = r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
-
-# Tenor GIF URLを検出するパターン
-TENOR_URL_PATTERN = r'https?://tenor\.com/view[^\s]*'
-
-# GIF URLを検出するパターン (Tenor & GIPHY)
-GIF_URL_PATTERN = r'https?://(tenor\.com/view|giphy\.com)[^\s]*'
+@client.tree.command(name="privacy_settings", description="プライベートチャンネルの処理方法を設定します")
+async def privacy_settings(interaction: discord.Interaction, archive_private: bool):
+    try:
+        guild_id = interaction.guild_id
+        if guild_id not in client.guild_settings:
+            client.guild_settings[guild_id] = {}
+        
+        client.guild_settings[guild_id]['archive_private'] = archive_private
+        client.save_settings()
+        
+        if archive_private:
+            message = "プライベートチャンネルのコンテンツもアーカイブするように設定しました。"
+        else:
+            message = "プライベートチャンネルのコンテンツはアーカイブしないように設定しました。"
+            
+        await interaction.response.send_message(message)
+    except Exception as e:
+        logger.error(f"Error in privacy_settings command: {e}", exc_info=True)
+        await interaction.response.send_message("設定の更新中にエラーが発生しました。", ephemeral=True)
 
 @client.event
 async def on_message(message):
@@ -221,7 +264,8 @@ async def on_message(message):
 
         # サーバーのアーカイブ設定を取得
         guild_id = message.guild.id
-        channel_id = client.guild_settings.get(guild_id, {}).get('archive_channel_id')
+        guild_settings = client.guild_settings.get(guild_id, {})
+        channel_id = guild_settings.get('archive_channel_id')
         
         # アーカイブ設定がなければ無視
         if not channel_id:
@@ -229,6 +273,14 @@ async def on_message(message):
 
         # アーカイブチャンネルのメッセージは無視
         if message.channel.id == channel_id:
+            return
+            
+        # プライベートチャンネルの処理
+        is_private = is_private_channel(message.channel)
+        archive_private = guild_settings.get('archive_private', False)
+        
+        if is_private and not archive_private:
+            logger.info(f"Skipped message in private channel {message.channel.name}")
             return
 
         archive_channel = client.get_channel(channel_id)
@@ -239,7 +291,7 @@ async def on_message(message):
         # メッセージからURLを検出
         all_urls = re.findall(URL_PATTERN, message.content)
         
-        # Tenor GIF URLを検出
+        # Tenor GIF URLを検出して除外
         tenor_urls = re.findall(TENOR_URL_PATTERN, message.content)
         
         # Tenor GIF URLを除外
