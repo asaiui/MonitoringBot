@@ -16,36 +16,6 @@ MonitoringBot は Discord サーバー内で共有されたリンクやファイ
 
 https://discord.com/oauth2/authorize?client_id=1338357316713582634
 
-## インストール方法
-
-### 前提条件
-
-- Python 3.8 以上
-- Discord Bot トークン
-
-### セットアップ
-
-1. リポジトリをクローン
-   ```
-   git clone https://github.com/yourusername/MonitoringBot.git
-   cd MonitoringBot
-   ```
-
-2. 必要なパッケージをインストール
-   ```
-   pip install -r requirements.txt
-   ```
-
-3. 環境変数の設定
-   ```
-   export DISCORD_BOT_TOKEN=あなたのBotトークン
-   ```
-
-4. Bot の起動
-   ```
-   python MonitoringBot.py
-   ```
-
 ## 使い方
 
 1. `/status` コマンドで Bot が正常に動作しているか確認
@@ -81,29 +51,3 @@ https://discord.com/oauth2/authorize?client_id=1338357316713582634
 
 - Tenor GIF URL（`https://tenor.com/view` から始まる URL）
 - プライベートチャンネルのコンテンツ（設定による）
-
-## デプロイメント
-
-このボットは Heroku や Railway などの PaaS サービスにデプロイすることができます。その場合、以下の環境変数を設定してください：
-
-- `DISCORD_BOT_TOKEN`: Discord Bot トークン
-- `PORT`: （オプション）HTTP サーバーのポート番号（デフォルト: 10000）
-
-## 貢献
-
-1. このリポジトリをフォーク
-2. 新しいブランチを作成 (`git checkout -b feature/amazing-feature`)
-3. 変更をコミット (`git commit -m 'Add some amazing feature'`)
-4. ブランチにプッシュ (`git push origin feature/amazing-feature`)
-5. Pull Request を作成
-
-## ライセンス
-
-[MIT ライセンス](LICENSE)
-
-## サポート
-
-問題や質問がある場合は、GitHub Issues にてお知らせください。
-
----
-
