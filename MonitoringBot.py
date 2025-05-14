@@ -196,6 +196,18 @@ async def show_archive_channel(interaction: discord.Interaction):
         logger.error(f"Error in show_archive_channel command: {e}", exc_info=True)
         await interaction.response.send_message("チャンネル情報の取得中にエラーが発生しました。", ephemeral=True)
 
+# Git関連URLを検出する正規表現パターンを追加
+GIT_URL_PATTERN = r'http[s]?://(?:github\.com|gitlab\.com|bitbucket\.org|git\.io)(?:/[^\s]*)?'
+
+# URLを検出する正規表現パターン
+URL_PATTERN = r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
+
+# Tenor GIF URLを検出するパターン
+TENOR_URL_PATTERN = r'https?://tenor\.com/view[^\s]*'
+
+# GIF URLを検出するパターン (Tenor & GIPHY)
+GIF_URL_PATTERN = r'https?://(tenor\.com/view|giphy\.com)[^\s]*'
+
 @client.event
 async def on_message(message):
     try:
@@ -225,7 +237,13 @@ async def on_message(message):
             return
 
         # メッセージからURLを検出
-        urls = re.findall(URL_PATTERN, message.content)
+        all_urls = re.findall(URL_PATTERN, message.content)
+        
+        # Tenor GIF URLを検出
+        tenor_urls = re.findall(TENOR_URL_PATTERN, message.content)
+        
+        # Tenor GIF URLを除外
+        urls = [url for url in all_urls if url not in tenor_urls]
         
         # 添付ファイルを処理
         files = message.attachments
