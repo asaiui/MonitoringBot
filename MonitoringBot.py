@@ -57,9 +57,11 @@ class ArchiveBot(discord.Client):
         except Exception as e:
             logger.error(f"Error saving settings: {e}")
 
+    # ArchiveBotクラスのsetup_hookメソッドを修正
     async def setup_hook(self):
         try:
             logger.info("Setting up commands...")
+            # すべてのサーバーでコマンドを同期
             await self.tree.sync()
             logger.info("Commands setup complete!")
         except Exception as e:
@@ -74,24 +76,27 @@ URL_PATTERN = r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-
 TENOR_URL_PATTERN = r'https?://tenor\.com/view[^\s]*'
 
 # プライベートチャンネルかどうかを判断する関数
-def is_private_channel(channel):
-    """
-    チャンネルがプライベートかどうかを判断する
-    @everyone に VIEW_CHANNEL 権限がない場合、プライベートチャンネルと見なす
-    """
+@client.tree.command(name="privacy_settings", description="プライベートチャンネルの処理方法を設定します")
+async def privacy_settings(interaction: discord.Interaction, archive_private: bool = False):
     try:
-        # @everyone のロールを取得
-        everyone_role = channel.guild.default_role
+        guild_id = interaction.guild_id
+        if guild_id not in client.guild_settings:
+            client.guild_settings[guild_id] = {}
         
-        # チャンネルの権限を確認
-        permissions = channel.permissions_for(everyone_role)
+        client.guild_settings[guild_id]['archive_private'] = archive_private
+        client.save_settings()
         
-        # VIEW_CHANNEL 権限がなければプライベート
-        return not permissions.view_channel
+        logger.info(f"Privacy settings updated for guild {guild_id}: archive_private = {archive_private}")
+        
+        if archive_private:
+            message = "プライベートチャンネルのコンテンツもアーカイブするように設定しました。"
+        else:
+            message = "プライベートチャンネルのコンテンツはアーカイブしないように設定しました。"
+            
+        await interaction.response.send_message(message)
     except Exception as e:
-        logger.error(f"Error checking channel privacy: {e}", exc_info=True)
-        # エラーの場合は安全のため、プライベートと見なす
-        return True
+        logger.error(f"Error in privacy_settings command: {e}", exc_info=True)
+        await interaction.response.send_message("設定の更新中にエラーが発生しました。", ephemeral=True)
 
 @client.event
 async def on_ready():
@@ -250,6 +255,20 @@ async def privacy_settings(interaction: discord.Interaction, archive_private: bo
     except Exception as e:
         logger.error(f"Error in privacy_settings command: {e}", exc_info=True)
         await interaction.response.send_message("設定の更新中にエラーが発生しました。", ephemeral=True)
+
+@client.tree.command(name="sync_commands", description="コマンドを再同期します（管理者のみ）")
+async def sync_commands(interaction: discord.Interaction):
+    try:
+        # 管理者権限チェック
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("このコマンドは管理者のみ使用できます。", ephemeral=True)
+            return
+            
+        await client.tree.sync()
+        await interaction.response.send_message("コマンドを再同期しました。新しいコマンドが使用可能になりました。")
+    except Exception as e:
+        logger.error(f"Error in sync_commands: {e}", exc_info=True)
+        await interaction.response.send_message("コマンドの同期中にエラーが発生しました。", ephemeral=True)
 
 @client.event
 async def on_message(message):
